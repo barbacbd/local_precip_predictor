@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local_precip_predictor"
+authors = [
+	{name = "Brent Barbachem", email = "barbacbd@gmail.com"},
+]
+description = "Project to predict local precipitation values based on ENSO and NAO values."
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.8"
+keywords = [
+    "python",
+    "machine-learning",
+    "statistics",
+    "weather",
+    "prediction",
+    "python3",
+    "predictive-modeling",
+    "event-analysis"
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: Freeware",
+    "Natural Language :: English",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development"
+]
+dependencies = [
+    "bs4",
+    "requests",
+    "retry_requests",
+    "pandas",
+    "openmeteo_requests",
+    "requests_cache",
+    "lxml",
+]
+dynamic = ["version"]
+
+[tool.setuptools]
+include-package-data = true
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+    "coverage",
+    "pytest-cov",
+    "mock",
+    "pylint",
+    "pytest-order", 
+    "pytest-subtests",
+]
+lint = [
+    "pylint",  # this exists in multiple spaces, and that's ok
+]
+clean = [
+    "pyclean",
+]
+[project.scripts]
+local_precip = "local_precip_predictor.exec:main"
+
+

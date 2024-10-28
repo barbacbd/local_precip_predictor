@@ -1,5 +1,4 @@
 
-from datetime import datetime
 import requests
 import requests_cache
 from retry_requests import retry
@@ -257,16 +256,3 @@ def get_enso_data(export_to_file=False):
     except ValueError:
         # failed to find the item, this is a problem
         return
-
-
-def main():
-    today = datetime.now()
-    end_date = f"{today.year}-{today.month:02}-{today.day:02}"
-
-    daily_data_state = get_daily_data(end_date=end_date, export_to_file=True)
-    nao_state = get_nao_data(export_to_file=True)
-    enso_state = get_enso_data(export_to_file=True)
-
-
-if __name__ == '__main__':
-    main()
