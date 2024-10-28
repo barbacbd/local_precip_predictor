@@ -15,6 +15,8 @@ def main():
     # nao_state = get_nao_data(export_to_file=export_to_file)
     # enso_state = get_enso_data(export_to_file=export_to_file)
 
+    # Temp, This is only being used to drive the number of API requests down.
+    # The open meteo api has an hourly limit.
     df = pd.read_csv('open_meteo_1950-01-01_2024-10-28.csv')
 
     averages = parse_daily_values_by_month(daily_value_df=df)

@@ -5,7 +5,7 @@ import datetime
 
 def _parse_date(date_str):
     '''
-    Parse the date out of the 
+    Parse the date out of the string in the format %Y-%M-%D HH:mm:ss
     '''
     date_split = date_str.split()[0]
     year, month, day = date_split.split("-")
@@ -14,7 +14,25 @@ def _parse_date(date_str):
 
 def parse_daily_values_by_month(daily_value_df):
     '''
-    Fill in here
+    Parse the monthly averages for each year. 
+
+    - temperature_2m_max
+    - temperature_2m_min
+    - temperature_2m_mean
+    - apparent_temperature_max
+    - apparent_temperature_min
+    - apparent_temperature_mean
+    - precipitation_sum
+    - rain_sum
+    - snowfall_sum
+
+    The following units are used:
+    - temperature_unit: fahrenheit
+    - wind_speed_unit: mph
+    - precipitation_unit: inch
+
+    :param daily_value_df: Dataframe containing the weather data for a period of time.
+    :return: dictionary year -> month -> average values
     '''
     data_by_month = {}
     for index, row in daily_value_df.iterrows():
