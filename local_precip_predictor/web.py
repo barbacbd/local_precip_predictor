@@ -1,4 +1,6 @@
 
+from datetime import datetime
+from collections import defaultdict
 import requests
 import requests_cache
 from retry_requests import retry
@@ -42,6 +44,9 @@ def get_nao_data(
     Get the North Atlantic Oscillation values for each month of the year. The 
     data starts in 1950. 
 
+    Unlike the El Nino-Southern Oscillation, the North Atlantic Oscillation is not 
+    currently predictable more than a couple weeks in advance.
+
     :param export_to_file: When true, the dataframe will be saved to a file nao.csv.
     :return: State object
     '''
@@ -54,12 +59,22 @@ def get_nao_data(
     # header (the months of the year). The rest of the lines are the rows
     # in the table, but the first element is the year. Cut the year out
     # and set that as the row index for the dataframe.
-    lines = data_str.split("\n")
-    head, lines = lines[0].split(), [x.split() for x in lines[1:] if x]
-    row_index = [x[0] for x in lines if x]
-    lines = [x[1:] for x in lines]
-    df = pd.DataFrame(lines, columns=head)
-    df.index = row_index
+    idxs = []
+    data = []
+    for line in data_str.split("\n")[1:]:
+        if not line:
+            continue
+        split_line = line.split()
+        year = split_line[0]
+        split_line = split_line[1:]
+
+        idxs.extend([
+            f"{year}-{i+1}" for i in range(len(split_line))
+        ])
+        data.extend(split_line)
+
+    df = pd.DataFrame(data, columns=['NAO'])
+    df.index = idxs
 
     if export_to_file:
         df.to_csv("nao.csv")
@@ -233,16 +248,28 @@ def get_enso_data(export_to_file=False):
         idx = table_data.index('Year')
         table_data = table_data[idx:]
 
-        # The header is always going to be the same
-        header = ['Year', 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
+        # The data header comes in with the following values:
+        # 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ'
+        # The majority of the other data is setup as monthly averages. ENSO data is a rolling
+        # 3 month average. Each of the 3 month periods will be given a number 1-12 to correlate
+        # with the other data sets. The number will represent the middle of the 3 months. 
+        # For example: DJF -> December, January, February will be given a 1, as the middle month is 
+        # January.
+        _header = ['Year', 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
         rows = []
-        for data in range(0, len(table_data), len(header)):
-            row = table_data[data:data+len(header)]
-            if row != header:
-                rows.append(row)
+        idxs = []
+        for data in range(0, len(table_data), len(_header)):
+            row = table_data[data:data+len(_header)]
 
+            # eliminate the rows that contain the table header data
+            if row != _header:
+                year = row[0]
+                rows.extend(row[1:])
+                idxs.extend([f"{year}-{i+1}" for i in range(len(row[1:]))])
 
-        df = pd.DataFrame(rows, columns=header)
+        df = pd.DataFrame(rows, columns=["ENSO"])
+        df.index = idxs
+
         if export_to_file:
             df.to_csv("enso.csv", index=False)
 
@@ -256,3 +283,109 @@ def get_enso_data(export_to_file=False):
     except ValueError:
         # failed to find the item, this is a problem
         return
+
+
+def get_amo_data(export_to_file=False):
+    '''
+    The Atlantic Multidecadal Oscillation (AMO) is the theorized variability of the sea
+    surface temperature (SST) of the North Atlantic Ocean on the timescale of several decades.
+
+    ** Note: this is a controversial data source, and there are theories that this 
+    may have little to no influence on climate patterns. **
+
+    :param export_to_file: When true, export to a csv file with the dates as the name.
+    :return: State object
+    '''
+    url = "https://psl.noaa.gov/data/correlation/amon.us.data"
+    html = requests.get(url).content
+    # format the code as a string rather than bytes
+    data_str = html.decode('utf-8')
+
+    lines = data_str.split("\n")
+    # The first line of the data is the years that are included.
+    # We only want data that is from the 1950+, so let's remove 
+    # that date dynamically and figure out where our data ends.
+    lines = [x.strip() for x in lines if x]
+    start_year, end_year = lines[0].split()
+
+    lines_to_remove = 1
+    if int(start_year) < 1950:
+        lines_to_remove += (1950 - int(start_year))
+    
+    # strip off the first n rows until we begin with 1950
+    lines = lines[lines_to_remove:]
+
+    # strip off the last n rows until we end with `end_year`
+    final_data_lines = []
+    for line in lines:
+        final_data_lines.append(line)
+        if line.startswith(end_year):
+            break
+
+    idxs = []
+    data = []
+    for line in final_data_lines:
+        split_line = line.split()
+        year = split_line[0]
+        split_line = split_line[1:]
+
+        idxs.extend([
+            f"{year}-{i+1}" for i in range(len(split_line))
+        ])
+        data.extend(split_line)
+    
+    df = pd.DataFrame(data, columns=['AMO'])
+    df.index = idxs
+
+    if export_to_file:
+        df.to_csv("amo.csv")
+
+    state = State(
+        dataframe=df,
+        exported_to_file=export_to_file,
+        filename="amo.csv"
+    )
+    return state
+
+def get_ao_data(export_to_file):
+    '''
+    The Arctic Oscillation (AO) is a back-and-forth shifting of atmospheric pressure between the Arctic and
+    the mid-latitudes of the North Pacific and North Atlantic. When the AO is strongly positive, a strong
+    mid-latitude jet stream steers storms northward, reducing cold air outbreaks in the mid-latitudes. When
+    the AO is strongly negative, a weaker, meandering jet dips farther south, allowing Arctic air to spill
+    into the mid-latitudes.
+
+    :param export_to_file: When true, export to a csv file with the dates as the name.
+    :return: State object
+    '''
+    # Get the data from the NOAA ascii table. This table is updated monthly.
+    url = "https://www.cpc.ncep.noaa.gov/products/precip/CWlink/daily_ao_index/monthly.ao.index.b50.current.ascii"
+    html = requests.get(url).content
+    # format the code as a string rather than bytes
+    data_str = html.decode('utf-8')
+    # Split the data by lines in the table. The first row will be the
+    # header (the months of the year). The rest of the lines are the rows
+    # in the table, but the first element is the year. Cut the year out
+    # and set that as the row index for the dataframe.
+    lines = [x for x in data_str.split("\n") if x]
+    idxs = []
+    monthly_data = []
+
+    for line in lines:
+        split_line = line.split()
+        idxs.append(f"{split_line[0]}-{split_line[1]}")
+        monthly_data.append(split_line[2])
+
+    header = ['AO']
+    df = pd.DataFrame(monthly_data, columns=header)
+    df.index = idxs
+
+    if export_to_file:
+        df.to_csv("ao.csv")
+
+    state = State(
+        dataframe=df,
+        exported_to_file=export_to_file,
+        filename="ao.csv"
+    )
+    return state

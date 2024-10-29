@@ -1,6 +1,13 @@
 
 from statistics import mean
 import datetime
+import pandas as pd
+
+
+_month_by_number = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+}
 
 
 def _parse_date(date_str):
@@ -37,52 +44,64 @@ def parse_daily_values_by_month(daily_value_df):
     data_by_month = {}
     for index, row in daily_value_df.iterrows():
 
-        year, month, day = _parse_date(str(row[0]))
-        print(f"Year = {year}, Month = {month}, Day = {day}")
+        year, month, day = _parse_date(str(row.iloc[0]))
         if year not in data_by_month:
             data_by_month[year] = {}
         if month not in data_by_month[year]:
             data_by_month[year][month] = {
-                "temperature_2m_max": [],
-                "temperature_2m_min": [],
-                "temperature_2m_mean": [],
-                "apparent_temperature_max": [],
-                "apparent_temperature_min": [],
-                "apparent_temperature_mean": [],
+                # "temperature_2m_max": [],
+                # "temperature_2m_min": [],
+                # "temperature_2m_mean": [],
+                # "apparent_temperature_max": [],
+                # "apparent_temperature_min": [],
+                # "apparent_temperature_mean": [],
                 "precipitation_sum": [],
-                "rain_sum": [],
-                "snowfall_sum": [],
+                # "rain_sum": [],
+                # "snowfall_sum": [],
             }
         
-        if row[1] is not None:
-            data_by_month[year][month]["temperature_2m_max"].append(row[1])
-        if row[2] is not None:
-            data_by_month[year][month]["temperature_2m_min"].append(row[2])
-        if row[3] is not None:
-            data_by_month[year][month]["temperature_2m_mean"].append(row[3])
-        if row[4] is not None:
-            data_by_month[year][month]["apparent_temperature_max"].append(row[4])
-        if row[5] is not None:
-            data_by_month[year][month]["apparent_temperature_min"].append(row[5])
-        if row[6] is not None:
-            data_by_month[year][month]["apparent_temperature_mean"].append(row[6])
-        if row[7] is not None:
-            data_by_month[year][month]["precipitation_sum"].append(row[7])
-        if row[8] is not None:
-            data_by_month[year][month]["rain_sum"].append(row[8])
-        if row[9] is not None:
-            data_by_month[year][month]["snowfall_sum"].append(row[9])
+        # if row.iloc[1] is not None:
+        #     data_by_month[year][month]["temperature_2m_max"].append(row.iloc[1])
+        # if row.iloc[2] is not None:
+        #     data_by_month[year][month]["temperature_2m_min"].append(row.iloc[2])
+        # if row.iloc[3] is not None:
+        #     data_by_month[year][month]["temperature_2m_mean"].append(row.iloc[3])
+        # if row.iloc[4] is not None:
+        #     data_by_month[year][month]["apparent_temperature_max"].append(row.iloc[4])
+        # if row.iloc[5] is not None:
+        #     data_by_month[year][month]["apparent_temperature_min"].append(row.iloc[5])
+        # if row.iloc[6] is not None:
+        #     data_by_month[year][month]["apparent_temperature_mean"].append(row.iloc[6])
+        if row.iloc[7] is not None:
+            data_by_month[year][month]["precipitation_sum"].append(row.iloc[7])
+        # if row.iloc[8] is not None:
+        #     data_by_month[year][month]["rain_sum"].append(row.iloc[8])
+        # if row.iloc[9] is not None:
+        #     data_by_month[year][month]["snowfall_sum"].append(row.iloc[9])
 
     averages = {}
     for year, yearly_value in data_by_month.items():
-        if year not in averages:
-            averages[year] = {}
-
         for month, monthly_value in yearly_value.items():
-            if month not in averages[year]:
-                averages[year][month] = {}
+            index = f"{year}-{int(month)}"
 
             for key in monthly_value:
-                averages[year][month][key] = mean(monthly_value[key])
+               averages[index] = mean(monthly_value[key])
     
-    return averages
+    df = pd.DataFrame.from_dict(averages, orient='index', columns=["precipitation_sum"])
+
+    return df
+
+
+def combine_data(dfs):
+    '''
+    Combine the dataframes. Each dataframe should be cut down to be the
+    same size as the smallest dataframe to avoid issues/missing values.
+    '''
+    smallest_df_len = min([len(df) for df in dfs])
+    combined_df = dfs[0].head(smallest_df_len)
+
+    for df in dfs[1:]:
+        sliced_df = df.head(smallest_df_len)
+        combined_df = pd.concat([combined_df, sliced_df], axis=1, join='outer')
+    
+    return combined_df
