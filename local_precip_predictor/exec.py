@@ -11,7 +11,7 @@ def main():
 
     export_to_file = False
 
-    gather = False
+    gather = True
 
     if gather:
         # daily_data_state = get_daily_data(end_date=end_date, export_to_file=export_to_file)
@@ -23,6 +23,7 @@ def main():
         df = pd.read_csv('open_meteo_1950-01-01_2024-10-28.csv')
 
         averages = parse_daily_values_by_month(daily_value_df=df)
+        # averages.to_csv('daily.csv')
 
         amo_state = get_amo_data(export_to_file=export_to_file)
         ao_state = get_ao_data(export_to_file=export_to_file)

@@ -1,3 +1,4 @@
+from enum import Enum
 from math import sqrt
 from statistics import mean
 import pandas as pd
@@ -7,6 +8,31 @@ from tensorflow.keras.layers import Dense
 from sklearn.metrics import f1_score
 from sklearn.ensemble import RandomForestClassifier
 from mrmr import mrmr_classif
+from json import dumps
+
+
+_valid_months = [
+    1,  # January
+    2,  # February
+    3,  # March
+    11, # November
+    12, # December
+]
+
+class MonthlyOutcome(Enum):
+    '''           Warmer
+                    |
+             2      |       1
+    Dry ____________|____________ Wet
+                    |
+             3      |       4
+                    |
+                  Colder
+    '''
+    WarmerWetter = 1  # ( 1,  1)
+    WarmerDrier = 2   # (-1,  1)
+    ColderDrier = 3   # (-1, -1)
+    ColderWetter = 4  # ( 1, -1)
 
 
 def _parse_date(date_str):
@@ -40,54 +66,102 @@ def parse_daily_values_by_month(daily_value_df):
     :param daily_value_df: Dataframe containing the weather data for a period of time.
     :return: dictionary year -> month -> average values
     '''
+    _daily_variables_to_idx = {
+        # "temperature_2m_max": 1,
+        "temperature_2m_min": 2,
+        # "temperature_2m_mean": 3,
+        # "apparent_temperature_max": 4,
+        # "apparent_temperature_min": 5,
+        # "apparent_temperature_mean": 6,
+        "precipitation_sum": 7,
+        # "rain_sum": 8,
+        "snowfall_sum": 9,
+    }
+
     data_by_month = {}
     for index, row in daily_value_df.iterrows():
 
         year, month, day = _parse_date(str(row.iloc[0]))
         if year not in data_by_month:
             data_by_month[year] = {}
+
+        if int(month) not in _valid_months:
+            continue
+
         if month not in data_by_month[year]:
-            data_by_month[year][month] = {
-                # "temperature_2m_max": [],
-                # "temperature_2m_min": [],
-                # "temperature_2m_mean": [],
-                # "apparent_temperature_max": [],
-                # "apparent_temperature_min": [],
-                # "apparent_temperature_mean": [],
-                # "precipitation_sum": [],
-                # "rain_sum": [],
-                "snowfall_sum": [],
-            }
+            data_by_month[year][month] = {x: [] for x in _daily_variables_to_idx}
         
-        # if row.iloc[1] is not None:
-        #     data_by_month[year][month]["temperature_2m_max"].append(row.iloc[1])
-        # if row.iloc[2] is not None:
-        #     data_by_month[year][month]["temperature_2m_min"].append(row.iloc[2])
-        # if row.iloc[3] is not None:
-        #     data_by_month[year][month]["temperature_2m_mean"].append(row.iloc[3])
-        # if row.iloc[4] is not None:
-        #     data_by_month[year][month]["apparent_temperature_max"].append(row.iloc[4])
-        # if row.iloc[5] is not None:
-        #     data_by_month[year][month]["apparent_temperature_min"].append(row.iloc[5])
-        # if row.iloc[6] is not None:
-        #     data_by_month[year][month]["apparent_temperature_mean"].append(row.iloc[6])
-        # if row.iloc[7] is not None:
-        #     data_by_month[year][month]["precipitation_sum"].append(row.iloc[7])
-        # if row.iloc[8] is not None:
-        #     data_by_month[year][month]["rain_sum"].append(row.iloc[8])
-        if row.iloc[9] is not None:
-            data_by_month[year][month]["snowfall_sum"].append(row.iloc[9])
+        for var_name, var_idx in _daily_variables_to_idx.items():
+            if row.iloc[var_idx] is not None:
+                data_by_month[year][month][var_name].append(row.iloc[var_idx])
 
     averages = {}
+    total_averages_per_month = {}
     for year, yearly_value in data_by_month.items():
         for month, monthly_value in yearly_value.items():
             index = f"{year}-{int(month)}"
+            if index not in averages:
+                averages[index] = {}
 
             for key in monthly_value:
-               mean_value = mean(monthly_value[key])
-               averages[index] = [mean_value, int(mean_value > 0)]
-    
-    df = pd.DataFrame.from_dict(averages, orient='index', columns=["snowfall_sum", "snowed"])
+                avg = mean(monthly_value[key])
+                averages[index][key] = avg
+
+                if month not in total_averages_per_month:
+                    total_averages_per_month[month] = {}
+                if key not in total_averages_per_month[month]:
+                    total_averages_per_month[month][key] = []
+                total_averages_per_month[month][key].append(avg)
+
+    for m, var_dict in total_averages_per_month.copy().items():
+        for var_name, avgs in var_dict.items():
+            total_averages_per_month[m][var_name] = mean(avgs)
+
+    _diff_keys_map = {x: f"{x}-diff" for x in _daily_variables_to_idx}
+    for index, var_dict in averages.copy().items():
+        month = f'{int(index.split("-")[1]):02d}'
+
+        if month in total_averages_per_month:
+            for var, value in var_dict.copy().items():
+                if var in total_averages_per_month[month]:
+                    diff = value - total_averages_per_month[month][var]
+
+                    # current acceptable variation = 10%
+                    acceptable_variation = total_averages_per_month[month][var] * 0.10
+
+                    # the outcome is labeled with a 0 if the values are within
+                    # the variation for that variable (see above). If the value
+                    # is greater than the variation and positive, a 1 is
+                    # set, otherwise a -1 is set.
+                    outcome = 1 if diff > acceptable_variation else \
+                        -1 if diff < -acceptable_variation else 0
+
+                    averages[index][f"{var}-diff"] = diff
+                    averages[index][f"{var}-outcome"] = outcome
+
+                    if "temperature_2m_min-outcome" in averages[index] and \
+                            "precipitation_sum-outcome" in averages[index]:
+                        expected_outcome = 0
+                        if averages[index]["temperature_2m_min-outcome"] == 1 and \
+                            averages[index]["precipitation_sum-outcome"] == 1:
+                            expected_outcome = MonthlyOutcome.WarmerWetter.value
+                        elif averages[index]["temperature_2m_min-outcome"] == 1 and \
+                            averages[index]["precipitation_sum-outcome"] == -1:
+                            expected_outcome = MonthlyOutcome.WarmerDrier.value
+                        elif averages[index]["temperature_2m_min-outcome"] == -1 and \
+                            averages[index]["precipitation_sum-outcome"] == -1:
+                            expected_outcome = MonthlyOutcome.ColderDrier.value
+                        elif averages[index]["temperature_2m_min-outcome"] == -1 and \
+                            averages[index]["precipitation_sum-outcome"] == 1:
+                            expected_outcome = MonthlyOutcome.ColderWetter.value
+                        averages[index]["outcome"] = expected_outcome
+                else:
+                    print(f"failed to find var {var} in month {month}")
+        else:
+            print(f"failed to find month: {month}")
+
+    columns = list(averages[list(averages.keys())[0]].keys())
+    df = pd.DataFrame.from_dict(averages, orient='index', columns=columns)
 
     return df
 
