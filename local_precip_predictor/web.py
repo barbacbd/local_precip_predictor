@@ -1,5 +1,6 @@
 
 from datetime import datetime
+from enum import Enum
 from collections import defaultdict
 import requests
 import requests_cache
@@ -35,6 +36,18 @@ class State:
     def filename(self, filename):
         self._exported_to_file = filename is not None
         self._filename = filename
+
+
+class ENSO(Enum):
+    VSLN = -4  # Very Strong La Nina
+    SLN = -3   # Strong La Nina
+    MLN = -2   # Moderate La Nina
+    WLN = -1   # Weak La Nina
+    NOT_DEFINITIVE = 0
+    WEN = 1    # Weak El Nino
+    MEN = 2    # Moderate El Nino
+    SEN = 3    # Strong El Nino
+    VSEN = 4   # Very Strong El Nino
 
 
 def get_nao_data(
@@ -203,6 +216,44 @@ def _is_comment(elem):
     return isinstance(elem, Comment)
 
 
+def discretize_enso(data):
+    '''
+    Discretize the ENSO data to the following format:
+
+    Very Strong La Nina: <= -2.0 
+    Strong La Nina: -1.9 - -1.5
+    Moderate La Nina: -1.4 - -1.0
+    Weak La Nina: -0.9 - -0.5
+    Not definitive: -0.4 - 0.4
+    Weak El Nino: 0.5 - 0.9
+    Moderate El Nino: 1.0 - 1.4
+    Strong El Nino: 1.5 - 1.9
+    Very Strong El Nino: >= 2.0
+    '''
+    discretized_data = []
+
+    for data_point in data:
+        if data_point <= -2.0:
+            discretized_data.append(ENSO.VSLN.value)
+        elif data_point <= -1.5:
+            discretized_data.append(ENSO.SLN.value)
+        elif data_point <= -0.5:
+            discretized_data.append(ENSO.MLN.value)
+        elif data_point <= -0.4:
+            discretized_data.append(ENSO.WLN.value)
+        elif data_point >= 2.0:
+            discretized_data.append(ENSO.VSEN.value)
+        elif data_point >= 1.5:
+            discretized_data.append(ENSO.SEN.value)
+        elif data_point >= 1.0:
+            discretized_data.append(ENSO.MEN.value)
+        elif data_point >= 0.4:
+            discretized_data.append(ENSO.WEN.value)
+        else:
+            discretized_data.append(ENSO.NOT_DEFINITIVE.value)
+    
+    return discretized_data
+
 def get_enso_data(export_to_file=False):
     '''
     Pull the ENSO data from NOAA's Climate Prediction Center. 
@@ -264,10 +315,13 @@ def get_enso_data(export_to_file=False):
             # eliminate the rows that contain the table header data
             if row != _header:
                 year = row[0]
-                rows.extend(row[1:])
+                rows.extend([float(x) for x in row[1:]])
                 idxs.extend([f"{year}-{i+1}" for i in range(len(row[1:]))])
 
-        df = pd.DataFrame(rows, columns=["ENSO"])
+        disc = discretize_enso(rows)
+        rows = [[rows[i], disc[i]] for i in range(len(rows))]
+
+        df = pd.DataFrame(rows, columns=["ENSO", "ENSO_DISC"])
         df.index = idxs
 
         if export_to_file:

@@ -39,6 +39,11 @@ dependencies = [
     "openmeteo_requests",
     "requests_cache",
     "lxml",
+    "scipy",
+    "keras",
+    "tensorflow",
+    "numpy",
+    "mrmr_selection",
 ]
 dynamic = ["version"]
 
