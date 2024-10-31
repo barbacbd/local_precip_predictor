@@ -10,6 +10,7 @@ from urllib.request import urlopen
 from bs4 import BeautifulSoup, Comment
 import openmeteo_requests
 import pandas as pd
+from .data import valid_cold_months
 
 
 class State:
@@ -82,9 +83,9 @@ def get_nao_data(
         split_line = split_line[1:]
 
         idxs.extend([
-            f"{year}-{i+1}" for i in range(len(split_line))
+            f"{year}-{i+1}" for i in range(len(split_line)) if i+1 in valid_cold_months
         ])
-        data.extend(split_line)
+        data.extend([split_line[i] for i in range(len(split_line)) if i+1 in valid_cold_months])
 
     df = pd.DataFrame(data, columns=['NAO'])
     df.index = idxs
@@ -295,48 +296,43 @@ def get_enso_data(export_to_file=False):
         if table_data:
             break  # as long as the table data isn't empty we should have what we need
 
-    try:
-        idx = table_data.index('Year')
-        table_data = table_data[idx:]
+    idx = table_data.index('Year')
+    table_data = table_data[idx:]
 
-        # The data header comes in with the following values:
-        # 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ'
-        # The majority of the other data is setup as monthly averages. ENSO data is a rolling
-        # 3 month average. Each of the 3 month periods will be given a number 1-12 to correlate
-        # with the other data sets. The number will represent the middle of the 3 months. 
-        # For example: DJF -> December, January, February will be given a 1, as the middle month is 
-        # January.
-        _header = ['Year', 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
-        rows = []
-        idxs = []
-        for data in range(0, len(table_data), len(_header)):
-            row = table_data[data:data+len(_header)]
+    # The data header comes in with the following values:
+    # 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ'
+    # The majority of the other data is setup as monthly averages. ENSO data is a rolling
+    # 3 month average. Each of the 3 month periods will be given a number 1-12 to correlate
+    # with the other data sets. The number will represent the middle of the 3 months. 
+    # For example: DJF -> December, January, February will be given a 1, as the middle month is 
+    # January.
+    _expected_header = ['Year', 'DJF', 'JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ']
+    rows = []
+    idxs = []
+    for data in range(0, len(table_data), len(_expected_header)):
+        row = table_data[data:data+len(_expected_header)]
 
-            # eliminate the rows that contain the table header data
-            if row != _header:
-                year = row[0]
-                rows.extend([float(x) for x in row[1:]])
-                idxs.extend([f"{year}-{i+1}" for i in range(len(row[1:]))])
+        # eliminate the rows that contain the table header data
+        if row != _expected_header:
+            year = row[0]
+            rows.extend([float(x) for i, x in enumerate(row[1:]) if i+1 in valid_cold_months])
+            idxs.extend([f"{year}-{i+1}" for i in range(len(row[1:])) if i+1 in valid_cold_months])
 
-        disc = discretize_enso(rows)
-        rows = [[rows[i], disc[i]] for i in range(len(rows))]
+    disc = discretize_enso(rows)
+    rows = [[rows[i], disc[i]] for i in range(len(rows))]
 
-        df = pd.DataFrame(rows, columns=["ENSO", "ENSO_DISC"])
-        df.index = idxs
+    df = pd.DataFrame(rows, columns=["ENSO", "ENSO_DISC"])
+    df.index = idxs
 
-        if export_to_file:
-            df.to_csv("enso.csv", index=False)
+    if export_to_file:
+        df.to_csv("enso.csv", index=False)
 
-        state = State(
-            dataframe=df,
-            exported_to_file=export_to_file,
-            filename="enso.csv"
-        )
-        return state
-            
-    except ValueError:
-        # failed to find the item, this is a problem
-        return
+    state = State(
+        dataframe=df,
+        exported_to_file=export_to_file,
+        filename="enso.csv"
+    )
+    return state
 
 
 def get_amo_data(export_to_file=False):
@@ -384,9 +380,9 @@ def get_amo_data(export_to_file=False):
         split_line = split_line[1:]
 
         idxs.extend([
-            f"{year}-{i+1}" for i in range(len(split_line))
+            f"{year}-{i+1}" for i in range(len(split_line)) if i+1 in valid_cold_months
         ])
-        data.extend(split_line)
+        data.extend([split_line[i] for i in range(len(split_line)) if i+1 in valid_cold_months])
     
     df = pd.DataFrame(data, columns=['AMO'])
     df.index = idxs
@@ -427,8 +423,9 @@ def get_ao_data(export_to_file):
 
     for line in lines:
         split_line = line.split()
-        idxs.append(f"{split_line[0]}-{split_line[1]}")
-        monthly_data.append(split_line[2])
+        if int(split_line[1]) in valid_cold_months:
+            idxs.append(f"{split_line[0]}-{split_line[1]}")
+            monthly_data.append(split_line[2])
 
     header = ['AO']
     df = pd.DataFrame(monthly_data, columns=header)

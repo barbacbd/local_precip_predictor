@@ -9,15 +9,8 @@ from sklearn.metrics import f1_score
 from sklearn.ensemble import RandomForestClassifier
 from mrmr import mrmr_classif
 from json import dumps
+from .data import valid_cold_months
 
-
-_valid_months = [
-    1,  # January
-    2,  # February
-    3,  # March
-    11, # November
-    12, # December
-]
 
 class MonthlyOutcome(Enum):
     '''           Warmer
@@ -85,7 +78,7 @@ def parse_daily_values_by_month(daily_value_df):
         if year not in data_by_month:
             data_by_month[year] = {}
 
-        if int(month) not in _valid_months:
+        if int(month) not in valid_cold_months:
             continue
 
         if month not in data_by_month[year]:
@@ -107,6 +100,10 @@ def parse_daily_values_by_month(daily_value_df):
                 avg = mean(monthly_value[key])
                 averages[index][key] = avg
 
+                if key == "snowfall_sum":
+                    num = sum(i > 0.5 for i in monthly_value[key])
+                    averages[index]["significant_snowfall_events"] = num
+
                 if month not in total_averages_per_month:
                     total_averages_per_month[month] = {}
                 if key not in total_averages_per_month[month]:
@@ -117,7 +114,6 @@ def parse_daily_values_by_month(daily_value_df):
         for var_name, avgs in var_dict.items():
             total_averages_per_month[m][var_name] = mean(avgs)
 
-    _diff_keys_map = {x: f"{x}-diff" for x in _daily_variables_to_idx}
     for index, var_dict in averages.copy().items():
         month = f'{int(index.split("-")[1]):02d}'
 
@@ -155,10 +151,6 @@ def parse_daily_values_by_month(daily_value_df):
                             averages[index]["precipitation_sum-outcome"] == 1:
                             expected_outcome = MonthlyOutcome.ColderWetter.value
                         averages[index]["outcome"] = expected_outcome
-                else:
-                    print(f"failed to find var {var} in month {month}")
-        else:
-            print(f"failed to find month: {month}")
 
     columns = list(averages[list(averages.keys())[0]].keys())
     df = pd.DataFrame.from_dict(averages, orient='index', columns=columns)
@@ -282,11 +274,21 @@ def correct_data(df, droppable=[]):
     '''
     # report the output values. This can be used as a prediction
     # value or a training data outcome
-    output = df["snowed"]
+    # output = df["snowed"]
+    output = df["significant_snowfall_events"]
+
+    labels=[
+        "ENSO", 
+        "AMO", 
+        "temperature_2m_min",
+        "precipitation_sum",
+        "snowfall_sum",
+        "significant_snowfall_events",
+    ]
 
     # Drop the output from the Dataframe, leaving the only data left as
     # the dataset to train.
-    df.drop(labels=["snowed", "snowfall_sum", "AMO", "ENSO"], axis=1,inplace=True)
+    df.drop(labels=labels, axis=1,inplace=True)
     df.fillna(0, inplace=True)
 
     return df, output
@@ -319,7 +321,7 @@ def create_model(df, **kwargs):
     # According to a source online, ReLU activation function is best for layers
     # except the output layer, that layer should use Sigmoid. This is the case for
     # performance reasons.
-    level = min([numLabels, 16])
+    level = max([numLabels, 16])
     model.add(Dense(level, input_shape=(numLabels,), activation='relu'))
     while level > 0:
         level = int(sqrt(level))

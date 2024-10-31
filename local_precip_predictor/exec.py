@@ -11,8 +11,7 @@ def main():
 
     export_to_file = False
 
-    gather = True
-
+    gather = False
     if gather:
         # daily_data_state = get_daily_data(end_date=end_date, export_to_file=export_to_file)
         nao_state = get_nao_data(export_to_file=export_to_file)
@@ -34,7 +33,7 @@ def main():
 
         df = pd.read_csv('test.csv', index_col=0)
 
-        model = create_model(df, precision=0.75, num_epochs=2000, batch_size=30, K=3)
+        model = create_model(df, precision=0.75, num_epochs=1000, batch_size=25, K=0)
 
 
 if __name__ == '__main__':
